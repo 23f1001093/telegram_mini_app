@@ -1,0 +1,5 @@
+{
+  "dependencies": {
+    "@telegram-web-app/core": "^0.0.1-beta.1"
+  }
+}

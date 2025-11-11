@@ -1,0 +1,14 @@
+python-telegram-bot
+requests
+Flask
+pydub
+python-dotenv
+uvicorn
+websockets
+numpy
+pytest
+fastapi
+httpx
+sqlalchemy
+asyncio
+python-multipart

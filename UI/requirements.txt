@@ -1,0 +1,8 @@
+react
+react-dom
+axios                          # HTTP client for API calls/websocket fallback
+socket.io-client               # For websocket communication with backend if needed
+bootstrap       # Optional UI styling framework
+#  npm install @telegram-web-app/core
+
+python-telegram-bot
