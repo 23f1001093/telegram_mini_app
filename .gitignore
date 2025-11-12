@@ -13,8 +13,7 @@ build/
 .env.*
 .idea/
 .vscode/
-coverage/
-htmlcov/
+
 .pytest_cache/
 *.egg-info/
 pip-wheel-metadata/ 
