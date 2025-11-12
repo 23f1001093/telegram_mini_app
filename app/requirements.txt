@@ -12,3 +12,4 @@ httpx
 sqlalchemy
 asyncio
 python-multipart
+websocket-client pyaudio

@@ -1,10 +1,14 @@
 import requests
 import json
 import os
+from dotenv import load_dotenv
+load_dotenv()
+
 class LLMClient:
-    def __init__(self, endpoint_url="http://localhost:8000/llm", model="llama3.2"):
+    def __init__(self, endpoint_url=None, model=None):
         self.endpoint_url = endpoint_url or os.getenv("OLLAMA_API_URL", "http://localhost:11434/api/generate")
-        self.model = model
+        self.model = model or os.getenv("OLLAMA_MODEL", "llama3.2")
+
 
 
     def generate_response(self, prompt):

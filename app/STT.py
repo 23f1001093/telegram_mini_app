@@ -1,41 +1,29 @@
-import requests
-import time
 import os
+import httpx
+from dotenv import load_dotenv
+
+load_dotenv()
 
 class STTClient:
-    def __init__(self):
-        self.api_key = os.getenv("ASSEMBLYAI_API_KEY")
-        self.upload_url = "https://api.assemblyai.com/v2/upload"
-        self.transcript_url = "https://api.assemblyai.com/v2/transcript"
+    def __init__(self, api_key=None):
+        self.api_key = api_key or os.getenv("ELEVENLABS_API_KEY")
+        if not self.api_key:
+            raise ValueError("ELEVENLABS_API_KEY must be set in .env or passed.")
+
+        self.url = "https://api.elevenlabs.io/v1/speech-to-text"
         self.headers = {
-            "authorization": self.api_key,
+            "xi-api-key": self.api_key,
+            # ElevenLabs STT is typically audio/wav and may require content type on upload
         }
 
-    def upload_audio(self, audio_bytes: bytes) -> str:
-        response = requests.post(self.upload_url, headers=self.headers, data=audio_bytes)
-        response.raise_for_status()
-        return response.json()["upload_url"]
-
-    def request_transcription(self, audio_url: str) -> str:
-        json_data = {"audio_url": audio_url}
-        response = requests.post(self.transcript_url, json=json_data, headers=self.headers)
-        response.raise_for_status()
-        return response.json()["id"]
-
-    def get_transcription_result(self, transcript_id: str) -> str:
-        url = f"{self.transcript_url}/{transcript_id}"
-        while True:
-            response = requests.get(url, headers=self.headers)
+    async def transcribe_audio(self, audio_bytes: bytes, mime_type="audio/wav") -> str:
+        """
+        Upload audio bytes (wav or mp3) to ElevenLabs STT and return transcript.
+        """
+        files = {"audio": ("audio.wav", audio_bytes, mime_type)}
+        async with httpx.AsyncClient(timeout=60) as client:
+            response = await client.post(self.url, headers=self.headers, files=files)
             response.raise_for_status()
             data = response.json()
-            if data["status"] == "completed":
-                return data["text"]
-            elif data["status"] == "error":
-                raise Exception(f"Transcription error: {data['error']}")
-            time.sleep(3)
-
-    def transcribe_audio(self, audio_bytes: bytes) -> str:
-        upload_url = self.upload_audio(audio_bytes)
-        transcript_id = self.request_transcription(upload_url)
-        transcript_text = self.get_transcription_result(transcript_id)
-        return transcript_text
+            # Adjust key if the ElevenLabs response changes format
+            return data.get("transcript") or data.get("text") or str(data)

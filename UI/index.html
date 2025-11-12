@@ -3,19 +3,43 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Telegram Voice Assistant</title>
+    <title>Voice Assistant</title>
     <link rel="stylesheet" href="styles.css" />
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px 0; }
+        #app { max-width: 480px; margin: auto; padding: 2em; border: 1px solid #eee; border-radius: 8px; }
+        h1 { text-align: center; }
+        #status { font-weight: bold; margin-bottom: 1em; }
+        button { margin-right: 8px; margin-bottom: 1em; }
+        #speaker { font-size: 1.1em; margin-bottom: 1em; }
+        #transcript, #response {
+            min-height: 1.5em;
+            margin-bottom: 1em;
+            background: #f9f9f9;
+            border-radius: 4px;
+            padding: 8px;
+            font-size: 1em;
+        }
+    </style>
 </head>
 <body>
     <div id="app">
         <h1>Voice Assistant</h1>
         <button id="start-btn">Start Call</button>
-        <button id="stop-btn">Stop Call</button>
-        <p id="status">Idle</p>
-        <div id="transcript"></div>
-        <div id="response"></div>
+        <button id="stop-btn" disabled>Stop Call</button>
+        <p id="status">Ready to start</p>
+        <div>
+            <strong>Speaker:</strong> <span id="speaker">Idle</span>
+        </div> 
+        <div>
+            <strong>Transcript:</strong>
+            <div id="transcript"></div>
+        </div>
+        <div>
+            <strong>Bot Response:</strong>
+            <div id="response"></div>
+        </div>
     </div>
-
-   <script src="app.js"></script>
+    <script src="app.js"></script>
 </body>
 </html>

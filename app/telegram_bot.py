@@ -1,25 +1,26 @@
-from telegram import InlineKeyboardMarkup, InlineKeyboardButton, Update
-from telegram.ext import CommandHandler, CallbackContext, Updater
-from .config import Config
-# You need your bot token from @BotFather
-TOKEN= Config.TELEGRAM_BOT_TOKEN
+from telegram import KeyboardButton, ReplyKeyboardMarkup, WebAppInfo, Update
+from telegram.ext import Application, CommandHandler, ContextTypes
+import os
+from dotenv import load_dotenv  
 
-def start(update: Update, context: CallbackContext):
+load_dotenv()
+
+TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
-        [InlineKeyboardButton("Open Voice Assistant", web_app={"url": "https://your-frontend-url.com"})]
+        [KeyboardButton(
+            text="Open Voice Assistant",
+            web_app=WebAppInfo("https://sirius-l8xgxd1ma-aditi-prasads-projects.vercel.app") 
+        )]
     ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    update.message.reply_text("Tap to launch the assistant:", reply_markup=reply_markup)
+    reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+    await update.message.reply_text("Tap to launch the assistant:", reply_markup=reply_markup)
 
 def main():
-    updater = Updater(TOKEN)
-    dp = updater.dispatcher
-
-    dp.add_handler(CommandHandler("start", start))
-    # Add more handlers as needed
-
-    updater.start_polling()
-    updater.idle()
+    app = Application.builder().token(TOKEN).build()
+    app.add_handler(CommandHandler("start", start))
+    app.run_polling()
 
 if __name__ == "__main__":
     main()
