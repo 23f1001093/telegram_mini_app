@@ -1,10 +1,11 @@
-.env
-venv/
+.vercel
+.env 
+vevv/
 bvenv/
 __pycache__/
 *.pyc
 .DS_Store
-node_modules/
+node_modules/       
 dist/
 build/
 *.log
@@ -13,7 +14,4 @@ build/
 .env.*
 .idea/
 .vscode/
-
-.pytest_cache/
-*.egg-info/
-pip-wheel-metadata/ 
+.env
