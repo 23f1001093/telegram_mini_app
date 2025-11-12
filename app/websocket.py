@@ -1,7 +1,7 @@
 import os
 import asyncio
 from fastapi import APIRouter, WebSocket
-from .STT import STTClient    # <-- Vosk STT!
+from .STT import STTClient
 from .LLM import LLMClient
 from .TTS import TTSClient
 from pydub import AudioSegment
@@ -9,13 +9,13 @@ import numpy as np
 import wave
 import io
 from dotenv import load_dotenv
+from starlette.websockets import WebSocketDisconnect
 
 load_dotenv()
 
 VOICE_ID = "21m00Tcm4TlvDq8ikWAM"
 websocket_router = APIRouter()
 stt_client = STTClient(model_path="/Users/aditiprasad/desktop/sirius/app/model-en-us/vosk-model-small-en-us-0.15")
-
 llm_client = LLMClient()
 tts_client = TTSClient()
 
@@ -23,11 +23,11 @@ def detect_audio_format(data: bytes) -> str:
     if len(data) < 4:
         return "float32"
     header = data[:4]
-    if header[:4] == b'\x1a\x45\xdf\xa3':
+    if header == b'\x1a\x45\xdf\xa3':
         return "webm"
-    if header[:4] == b'RIFF':
+    if header == b'RIFF':
         return "wav"
-    if header[:4] == b'OggS':
+    if header == b'OggS':
         return "ogg"
     if header[:3] == b'ID3' or header[:2] == b'\xff\xfb':
         return "mp3"
@@ -37,7 +37,7 @@ def detect_audio_format(data: bytes) -> str:
         max_val = np.max(np.abs(test_array))
         if 0.001 < max_val < 10.0:
             return "float32"
-    except:
+    except Exception:
         pass
     return "float32"
 
@@ -84,13 +84,18 @@ async def voice_ws(websocket: WebSocket):
     await websocket.accept()
     audio_buffer = []
     chunk_count = 0
-    CHUNKS_TO_PROCESS = 50
+    CHUNKS_TO_PROCESS = 50  # You might want 1 for single full utterance mode!
     first_format = None
     try:
         while True:
-            audiobytes = await websocket.receive_bytes()
+            try:
+                audiobytes = await websocket.receive_bytes()
+            except WebSocketDisconnect as ws_e:
+                print(f"WebSocket disconnected: {ws_e}")
+                break  # Client disconnected, exit loop.
             if chunk_count == 0:
                 first_format = detect_audio_format(audiobytes)
+                print(f"[DEBUG] Detected audio format: {first_format}")
             audio_buffer.append(audiobytes)
             chunk_count += 1
             if chunk_count >= CHUNKS_TO_PROCESS:
@@ -98,21 +103,61 @@ async def voice_ws(websocket: WebSocket):
                     audio_to_process = audio_buffer[0]
                 else:
                     audio_to_process = b''.join(audio_buffer)
-                wav_bytes = convert_to_wav(audio_to_process, first_format)
-                # --- LOCAL/STT --- #
+
+                # Convert input to WAV for STT
+                try:
+                    wav_bytes = convert_to_wav(audio_to_process, first_format)
+                except Exception as e:
+                    await websocket.send_text(f"Audio conversion failed: {e}")
+                    audio_buffer, chunk_count, first_format = [], 0, None
+                    continue
+                
+                # Save the audio for inspection
+                with open("debug_browser_audio.wav", "wb") as f:
+                    f.write(wav_bytes)
+                print("Saved debug_browser_audio.wav for inspection")
+
                 transcript = stt_client.transcribe_audio(wav_bytes)
+                print(f"[DEBUG] Transcript: '{transcript}'")
                 await websocket.send_text(f"Transcript: {transcript}")
-                # --- LLM Logic --- #
+
+                if not transcript or not transcript.strip():
+                    await websocket.send_text("No speech detected, please speak clearly and try again.")
+                    audio_buffer, chunk_count, first_format = [], 0, None
+                    continue
+
                 llm_response = llm_client.generate_response(transcript)
+                print(f"[DEBUG] LLM reply: '{llm_response}'")
                 await websocket.send_text(f"Bot reply: {llm_response}")
-                # --- TTS (ElevenLabs) --- #
-                async for tts_chunk in tts_client.stream_speech(llm_response, VOICE_ID):
-                    await websocket.send_bytes(tts_chunk)
+
+                if not llm_response or not llm_response.strip():
+                    await websocket.send_text("Bot could not generate a reply, please try again.")
+                    audio_buffer, chunk_count, first_format = [], 0, None
+                    continue
+
+                try:
+                    reply_audio_bytes = tts_client.synthesize_speech(llm_response)
+                except ValueError as tts_err:
+                    await websocket.send_text(str(tts_err))
+                    audio_buffer, chunk_count, first_format = [], 0, None
+                    continue
+                except Exception as tts_unexp:
+                    await websocket.send_text(f"TTS failed: {tts_unexp}")
+                    audio_buffer, chunk_count, first_format = [], 0, None
+                    continue
+
+                await websocket.send_bytes(reply_audio_bytes)
                 await websocket.send_text("Reply finished!")
-                audio_buffer = []
-                chunk_count = 0
-                first_format = None
+
+                audio_buffer, chunk_count, first_format = [], 0, None
     except Exception as e:
         print(f"WebSocket error: {e}")
+        try:
+            await websocket.send_text(f"WebSocket error: {e}")
+        except Exception:
+            pass  # Don't crash if already disconnected
     finally:
-        await websocket.close()
+        try:
+            await websocket.close()
+        except Exception:
+            pass  # Already closed
