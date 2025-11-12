@@ -14,13 +14,17 @@ app.include_router(webhook_router, prefix="/webhook")
 app.include_router(bot_router, prefix="/bot")
 app.include_router(websocket_router)
 
+
+
 origins = [
-    "http://localhost:8080", 
+    "http://localhost:8080",
+    "https://web.telegram.org",
+    "http://localhost:*",  # Allow any localhost port
 ]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,      
+    allow_origins=["*"],  # Allow all origins for WebSocket (more permissive)
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

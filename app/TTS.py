@@ -1,68 +1,30 @@
-import os
-import httpx
-from dotenv import load_dotenv
-
-load_dotenv()
+from gtts import gTTS
+from pydub import AudioSegment
+import io
 
 class TTSClient:
-    def __init__(self, api_key=None):
-        self.api_key = api_key or os.getenv("ELEVENLABS_API_KEY")
-        if not self.api_key:
-            raise ValueError("ELEVENLABS_API_KEY must be set in .env or passed explicitly.")
+    def __init__(self, lang="en"):
+        self.lang = lang  # Set to "hi" for Hindi, etc.
 
-    # ASYNC STREAMING METHOD (for real-time bots/frontends)
-    async def stream_speech(
-        self,
-        text,
-        voice_id="21m00Tcm4TlvDq8ikWAM",
-        model_id="eleven_multilingual_v2"
-    ):
-        url = f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}/stream"
-        headers = {
-            "xi-api-key": self.api_key,
-            "Accept": "audio/wav"
-        }
-        payload = {
-            "text": text,
-            "model_id": model_id,
-        }
-        async with httpx.AsyncClient(timeout=60) as client:
-            async with client.stream("POST", url, headers=headers, json=payload) as resp:
-                if resp.status_code != 200:
-                    details = await resp.aread()
-                    print("ElevenLabs Streaming TTS Error:", resp.status_code, details)
-                    return
-                async for chunk in resp.aiter_bytes():
-                    yield chunk  # For use in: async for chunk in tts_client.stream_speech(...)
+    def synthesize_speech(self, text):
+        """
+        Synchronous: Convert text to WAV bytes (for sending as Telegram voice).
+        """
+        # Step 1: Generate MP3 in memory
+        tts = gTTS(text=text, lang=self.lang)
+        mp3_bytesio = io.BytesIO()
+        tts.write_to_fp(mp3_bytesio)
+        mp3_bytesio.seek(0)
 
-    # SYNCHRONOUS METHOD (for saving full audio files)
-    def synthesize_speech(
-        self,
-        text,
-        voice_id="21m00Tcm4TlvDq8ikWAM",
-        model_id="eleven_multilingual_v2",
-        optimization_level=2,
-        output_format="mp3_44100_128",
-        apply_text_normalization="auto"
-    ):
-        import requests  # only needed here
-        url = f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}"
-        headers = {
-            "xi-api-key": self.api_key,
-            "Accept": "audio/wav",
-            "Content-Type": "application/json"
-        }
-        payload = {
-            "text": text,
-            "model_id": model_id,
-            "optimization_level": optimization_level,
-            "output_format": output_format,
-            "apply_text_normalization": apply_text_normalization
-        }
-        response = requests.post(url, headers=headers, json=payload)
-        response.raise_for_status()
-        return response.content
+        # Step 2: Convert MP3 to WAV in memory
+        audio = AudioSegment.from_file(mp3_bytesio, format="mp3")
+        wav_bytesio = io.BytesIO()
+        # Telegram prefers monocodal, 16kHz PCM WAV:
+        audio = audio.set_frame_rate(16000).set_channels(1)
+        audio.export(wav_bytesio, format="wav")
+        wav_bytesio.seek(0)
+        return wav_bytesio.getvalue()
 
-    def save_audio(self, audio_bytes, filename="output.mp3"):
+    def save_audio(self, audio_bytes, filename="output.wav"):
         with open(filename, "wb") as f:
             f.write(audio_bytes)

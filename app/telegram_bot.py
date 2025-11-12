@@ -11,7 +11,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
         [KeyboardButton(
             text="Open Voice Assistant",
-            web_app=WebAppInfo("https://sirius-l8xgxd1ma-aditi-prasads-projects.vercel.app") 
+            web_app=WebAppInfo("https://sirius-f4flenmjo-aditi-prasads-projects.vercel.app") 
         )]
     ]
     reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)

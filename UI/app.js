@@ -1,109 +1,122 @@
-let ws;
 let mediaRecorder;
-let audioStream;
-let statusEl, transcriptEl, responseEl, startBtn, stopBtn, speakerEl;
-let audioContext;
+let audioChunks = [];
+let ws;
+let recordingInterval;
 
-document.addEventListener("DOMContentLoaded", () => {
-    // UI refs
-    startBtn = document.getElementById("start-btn");
-    stopBtn = document.getElementById("stop-btn");
-    statusEl = document.getElementById("status");
-    transcriptEl = document.getElementById("transcript");
-    responseEl = document.getElementById("response");
-    speakerEl = document.getElementById("speaker");
+const startBtn = document.getElementById('start-btn');
+const stopBtn = document.getElementById('stop-btn');
+const statusEl = document.getElementById('status');
+const speakerEl = document.getElementById('speaker');
+const transcriptEl = document.getElementById('transcript');
+const responseEl = document.getElementById('response');
 
-    function resetUI() {
-        statusEl.innerText = "Idle";
-        transcriptEl.innerText = "";
-        responseEl.innerText = "";
-        speakerEl.innerText = "Idle";
-        startBtn.disabled = false;
-        stopBtn.disabled = true;
-    }
-
-    resetUI();
-
-    // Start button handler
-    startBtn.onclick = async () => {
-        resetUI();
-        statusEl.innerText = "Connecting...";
-        startBtn.disabled = true;
-        stopBtn.disabled = false;
-
-        ws = new WebSocket("ws://localhost:8000/voice");
-        ws.binaryType = "arraybuffer";
-
-        audioContext = new (window.AudioContext || window.webkitAudioContext)();
-
-        ws.onopen = async () => {
-            statusEl.innerText = "Recording...";
-            speakerEl.innerText = "You";
-
-            try {
-                audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                mediaRecorder = new MediaRecorder(audioStream);
-
-                mediaRecorder.ondataavailable = event => {
-                    if (ws.readyState === WebSocket.OPEN) {
-                        ws.send(event.data); // event.data: Blob (audio/wav or audio/webm)
-                    }
-                };
-
-                mediaRecorder.start(250); // 250 ms chunk
-            } catch (err) {
-                statusEl.innerText = "Mic access denied";
-                console.error("getUserMedia error:", err);
-                resetUI();
-                if (ws) ws.close();
+startBtn.addEventListener('click', async () => {
+    try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        
+        // Connect WebSocket
+        ws = new WebSocket('https://d9f3d5cba441.ngrok-free.app');
+        
+        ws.onopen = () => {
+            console.log('WebSocket connected');
+            statusEl.textContent = 'Connected - Recording...';
+        };
+        
+        ws.onmessage = async (event) => {
+            if (typeof event.data === 'string') {
+                // Text message = transcript
+                transcriptEl.textContent = 'You: ' + event.data;
+                speakerEl.textContent = 'You';
+            } else {
+                // Binary data = audio from bot
+                speakerEl.textContent = 'Bot';
+                const audioBlob = new Blob([event.data], { type: 'audio/mpeg' });
+                const audioUrl = URL.createObjectURL(audioBlob);
+                const audio = new Audio(audioUrl);
+                await audio.play();
+                speakerEl.textContent = 'Idle';
             }
         };
-
-        ws.onmessage = (msg) => {
-            // Transcript: String, TTS reply: audio chunk
-            if (typeof msg.data === "string") {
-                transcriptEl.innerText = msg.data;
-                speakerEl.innerText = "You";
-            } else {
-                speakerEl.innerText = "Bot";
-                // Play audio chunk (MP3, WAV, whatever your server sends)
-                audioContext.decodeAudioData(msg.data.slice(0), buffer => {
-                    const source = audioContext.createBufferSource();
-                    source.buffer = buffer;
-                    source.connect(audioContext.destination);
-                    source.start();
-                }, err => {
-                    console.error("decodeAudioData error:", err);
+        
+        ws.onerror = (error) => {
+            console.error('WebSocket error:', error);
+            statusEl.textContent = 'Error: ' + error.message;
+        };
+        
+        ws.onclose = () => {
+            console.log('WebSocket closed');
+            statusEl.textContent = 'Disconnected';
+        };
+        
+        // Setup MediaRecorder
+        audioChunks = [];
+        mediaRecorder = new MediaRecorder(stream);
+        
+        mediaRecorder.ondataavailable = (event) => {
+            if (event.data.size > 0) {
+                audioChunks.push(event.data);
+                console.log('Chunk collected:', event.data.size, 'Total chunks:', audioChunks.length);
+            }
+        };
+        
+        mediaRecorder.onstop = () => {
+            // Combine all chunks into one blob
+            const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+            console.log('Sending complete audio blob:', audioBlob.size, 'bytes');
+            
+            if (ws.readyState === WebSocket.OPEN && audioBlob.size > 0) {
+                audioBlob.arrayBuffer().then(buffer => {
+                    ws.send(buffer);
                 });
             }
+            
+            // Clear for next recording
+            audioChunks = [];
         };
+        
+        // Start recording with timeslice to collect chunks
+        mediaRecorder.start(1000); // Collect data every 1 second
+        
+        // Stop and restart every 3 seconds to send complete audio
+        recordingInterval = setInterval(() => {
+            if (mediaRecorder && mediaRecorder.state === 'recording') {
+                mediaRecorder.stop();
+                // Restart after a brief pause
+                setTimeout(() => {
+                    if (mediaRecorder && mediaRecorder.stream.active) {
+                        audioChunks = [];
+                        mediaRecorder.start(1000);
+                    }
+                }, 200);
+            }
+        }, 3000);
+        
+        startBtn.disabled = true;
+        stopBtn.disabled = false;
+        speakerEl.textContent = 'Recording...';
+        
+    } catch (error) {
+        console.error('Error starting:', error);
+        statusEl.textContent = 'Error: ' + error.message;
+    }
+});
 
-        ws.onclose = () => {
-            statusEl.innerText = "Call ended";
-            speakerEl.innerText = "Idle";
-            resetUI();
-        };
-
-        ws.onerror = (err) => {
-            statusEl.innerText = "Connection error";
-            console.error(err);
-            resetUI();
-        };
-    };
-
-    // Stop button handler
-    stopBtn.onclick = () => {
-        if (mediaRecorder && mediaRecorder.state !== "inactive") {
-            mediaRecorder.stop();
-        }
-        if (audioStream) {
-            audioStream.getTracks().forEach(track => track.stop());
-        }
-        if (ws && ws.readyState === WebSocket.OPEN) {
-            ws.close();
-        }
-        statusEl.innerText = "Processing...";
-        stopBtn.disabled = true;
-        startBtn.disabled = false;
-    };
+stopBtn.addEventListener('click', () => {
+    if (recordingInterval) {
+        clearInterval(recordingInterval);
+    }
+    
+    if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+        mediaRecorder.stop();
+        mediaRecorder.stream.getTracks().forEach(track => track.stop());
+    }
+    
+    if (ws) {
+        ws.close();
+    }
+    
+    startBtn.disabled = false;
+    stopBtn.disabled = true;
+    statusEl.textContent = 'Stopped';
+    speakerEl.textContent = 'Idle';
 });

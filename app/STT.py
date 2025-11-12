@@ -1,29 +1,38 @@
+import vosk
+import wave
+import json
 import os
-import httpx
-from dotenv import load_dotenv
-
-load_dotenv()
+import tempfile
 
 class STTClient:
-    def __init__(self, api_key=None):
-        self.api_key = api_key or os.getenv("ELEVENLABS_API_KEY")
-        if not self.api_key:
-            raise ValueError("ELEVENLABS_API_KEY must be set in .env or passed.")
-
-        self.url = "https://api.elevenlabs.io/v1/speech-to-text"
-        self.headers = {
-            "xi-api-key": self.api_key,
-            # ElevenLabs STT is typically audio/wav and may require content type on upload
-        }
-
-    async def transcribe_audio(self, audio_bytes: bytes, mime_type="audio/wav") -> str:
+    def __init__(self, model_path=None):
         """
-        Upload audio bytes (wav or mp3) to ElevenLabs STT and return transcript.
+        model_path: Path to the Vosk model directory (unzipped). 
+        Example: 'model-en-us' for English, 'model-hi' for Hindi, etc.
         """
-        files = {"audio": ("audio.wav", audio_bytes, mime_type)}
-        async with httpx.AsyncClient(timeout=60) as client:
-            response = await client.post(self.url, headers=self.headers, files=files)
-            response.raise_for_status()
-            data = response.json()
-            # Adjust key if the ElevenLabs response changes format
-            return data.get("transcript") or data.get("text") or str(data)
+        self.model_path = model_path or os.getenv("VOSK_MODEL_PATH", "model-en-us")
+        if not os.path.exists(self.model_path):
+            raise ValueError(f"Vosk model directory not found: {self.model_path}")
+        print(f"Loaded Vosk model from {self.model_path}")
+        self.model = vosk.Model(self.model_path)
+
+    def transcribe_audio(self, audio_bytes: bytes):
+        """
+        Transcribe WAV audio bytes using Vosk.
+        """
+        with tempfile.NamedTemporaryFile(suffix=".wav", delete=True) as tmpf:
+            tmpf.write(audio_bytes)
+            tmpf.flush()
+            wf = wave.open(tmpf.name, "rb")
+            rec = vosk.KaldiRecognizer(self.model, wf.getframerate())
+            transcript = ""
+            while True:
+                data = wf.readframes(4000)
+                if len(data) == 0:
+                    break
+                if rec.AcceptWaveform(data):
+                    part = json.loads(rec.Result())
+                    transcript += " " + part.get("text", "")
+            transcript += " " + json.loads(rec.FinalResult()).get("text", "")
+            wf.close()
+        return transcript.strip()
